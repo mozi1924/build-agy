@@ -11,25 +11,6 @@ on:
         required: false
         type: boolean
         default: false
-      component:
-        description: 'Specific component to build'
-        required: false
-        type: choice
-        options:
-          - all
-          - ide
-          - hub
-          - cli
-        default: all
-      arch:
-        description: 'Target architecture'
-        required: false
-        type: choice
-        options:
-          - all
-          - x86_64
-          - aarch64
-        default: all
 
 permissions:
   contents: write
@@ -41,7 +22,81 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  check-and-build:
+  check-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.condition.outputs.should_build }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch Latest Metadata & Changelogs
+        id: condition
+        run: |
+          pip install beautifulsoup4 jinja2 requests
+          python3 scripts/fetch_metadata.py --check-new > check_output.txt
+          cat check_output.txt
+          if [ "${{ github.event.inputs.force }}" = "true" ] || grep -q "TO_BUILD=" check_output.txt || [ ! -f "versions.json" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Metadata Artifact
+        if: steps.condition.outputs.should_build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: metadata
+          path: metadata.json
+
+  build-packages:
+    needs: check-versions
+    if: needs.check-versions.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [cli, hub, ide]
+        arch: [x86_64, aarch64]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download Metadata Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: metadata
+
+      - name: Install System Packaging Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm createrepo-c dpkg-dev
+          pip install beautifulsoup4 jinja2 requests
+
+      - name: Build Package (${{ matrix.component }} - ${{ matrix.arch }})
+        run: |
+          python3 scripts/build_packages.py -c "${{ matrix.component }}" -a "${{ matrix.arch }}"
+
+      - name: Upload Built Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.component }}-${{ matrix.arch }}
+          path: |
+            dist/deb/*.deb
+            dist/rpm/*.rpm
+
+  deploy-repo:
+    needs: build-packages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -53,72 +108,53 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
-      - name: Install Python Dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          pip install beautifulsoup4 jinja2 requests
+      - name: Download Metadata Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: metadata
+
+      - name: Download All Built Package Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          path: artifacts
+          merge-multiple: true
 
       - name: Install System Packaging Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y rpm createrepo-c dpkg-dev gh
+          pip install beautifulsoup4 jinja2 requests
 
-      - name: Fetch Latest Metadata & Changelogs
-        id: metadata
+      - name: Aggregate Packages into dist/
         run: |
-          python3 scripts/fetch_metadata.py --check-new > check_output.txt
-          cat check_output.txt
-          if grep -q "TO_BUILD=" check_output.txt; then
-            echo "has_updates=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_updates=false" >> $GITHUB_OUTPUT
-          fi
+          mkdir -p dist/deb dist/rpm
+          cp -v artifacts/*.deb dist/deb/ || true
+          cp -v artifacts/*.rpm dist/rpm/ || true
+          ls -la dist/deb dist/rpm
 
-      - name: Determine If Build Needed
-        id: condition
-        run: |
-          if [ "${{ github.event.inputs.force }}" = "true" ] || [ "${{ steps.metadata.outputs.has_updates }}" = "true" ] || [ ! -f "versions.json" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_build=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build Packages (DEB & RPM)
-        if: steps.condition.outputs.should_build == 'true'
-        run: |
-          COMP="${{ github.event.inputs.component || 'all' }}"
-          ARCH="${{ github.event.inputs.arch || 'all' }}"
-          python3 scripts/build_packages.py -c "$COMP" -a "$ARCH"
-
-      - name: Update APT and RPM Repositories
-        if: steps.condition.outputs.should_build == 'true'
+      - name: Generate APT and RPM Repositories
         run: |
           python3 scripts/update_repo.py
 
       - name: Generate Web Portal
-        if: steps.condition.outputs.should_build == 'true'
         run: |
           python3 scripts/generate_web.py
 
       - name: Setup GitHub Pages
-        if: steps.condition.outputs.should_build == 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload GitHub Pages Artifact
-        if: steps.condition.outputs.should_build == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: 'public'
 
       - name: Deploy to GitHub Pages
-        if: steps.condition.outputs.should_build == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
 
       - name: Create GitHub Release & Commit Version State
-        if: steps.condition.outputs.should_build == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

@@ -150,7 +150,12 @@ def create_rpm_package(pkg_name: str, version: str, rpm_arch: str, staging_dir: 
         changelog_entry = "- Update to official release version"
     
     spec_content = f"""%global debug_package %{{nil}}
+%global __os_install_post %{{nil}}
+%global __strip /bin/true
 %undefine __brp_check_rpaths
+%undefine __brp_strip
+%undefine __brp_strip_comment_note
+%undefine __brp_strip_static_archive
 %global __provides_exclude_from ^/opt/.*\\.so.*$
 %global __requires_exclude_from ^/opt/.*\\.so.*$
 %global __requires_exclude ^(libffmpeg\\.so|libmsalruntime\\.so|/usr/bin/node|/usr/bin/perl|/usr/bin/python3)
@@ -274,11 +279,8 @@ def build_hub(meta: dict, arch_key: str):
     opt_dest = staging_dir / "opt" / "antigravity"
     opt_dest.mkdir(parents=True, exist_ok=True)
 
-    log("Extracting Hub tarball...")
-    with tarfile.open(archive_path, "r:*") as tar:
-        tar.extractall(path=CACHE_DIR / f"extract_hub_{version}_{arch_key}")
-
-    extracted_root = CACHE_DIR / f"extract_hub_{version}_{arch_key}"
+    log("Extracting Hub tarball with system tar...")
+    run_cmd(f"tar -xzf '{archive_path}' -C '{extracted_root}'")
     top_dirs = [d for d in extracted_root.iterdir() if d.is_dir()]
     source_dir = top_dirs[0] if top_dirs else extracted_root
 
@@ -340,11 +342,12 @@ def build_ide(meta: dict, arch_key: str):
     opt_dest = staging_dir / "opt" / "antigravity-ide"
     opt_dest.mkdir(parents=True, exist_ok=True)
 
-    log("Extracting IDE tarball...")
-    with tarfile.open(archive_path, "r:*") as tar:
-        tar.extractall(path=CACHE_DIR / f"extract_ide_{version}_{arch_key}")
-
     extracted_root = CACHE_DIR / f"extract_ide_{version}_{arch_key}"
+    shutil.rmtree(extracted_root, ignore_errors=True)
+    extracted_root.mkdir(parents=True, exist_ok=True)
+
+    log("Extracting IDE tarball with system tar...")
+    run_cmd(f"tar -xzf '{archive_path}' -C '{extracted_root}'")
     top_dirs = [d for d in extracted_root.iterdir() if d.is_dir()]
     source_dir = top_dirs[0] if top_dirs else extracted_root
 
