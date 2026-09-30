@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Antigravity
+Comment=Google Antigravity 2.0 Agent Platform
+GenericName=AI Agent Platform
+Exec=/usr/bin/antigravity %U
+Icon=antigravity
+Type=Application
+Terminal=false
+StartupNotify=true
+StartupWMClass=Antigravity
+Categories=Development;IDE;
+MimeType=application/x-antigravity-workspace;x-scheme-handler/antigravity;

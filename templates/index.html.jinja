@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antigravity Linux Repository (APT & RPM)</title>
+  <meta name="description" content="Community APT and RPM software repository for Google Antigravity IDE, Hub, and CLI on Linux.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg-card: #161b22;
+      --bg-card-hover: #1c2128;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-rgb: 88, 166, 255;
+      --green: #3fb950;
+      --purple: #bc8cff;
+      --code-bg: #0b0e14;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Google Sans Flex', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 0 1rem 4rem;
+    }
+    .container { max-width: 1000px; margin: 0 auto; }
+    
+    /* Header */
+    header {
+      text-align: center;
+      padding: 4rem 1rem 2rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(var(--accent-rgb), 0.12);
+      color: var(--accent);
+      border: 1px solid rgba(var(--accent-rgb), 0.3);
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 1.25rem;
+    }
+    h1 {
+      font-size: 2.75rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, #fff 40%, #8b949e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 650px;
+      margin: 0 auto;
+    }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin: 2.5rem 0;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover {
+      border-color: #58a6ff66;
+      transform: translateY(-2px);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.5rem;
+    }
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    .version-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      background: #238636;
+      color: #fff;
+      padding: 0.15rem 0.5rem;
+      border-radius: 6px;
+    }
+    .card-desc {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .cmd-preview {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.6rem;
+      border-radius: 6px;
+      color: #a5d6ff;
+    }
+
+    /* Tabs & Code Blocks */
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 600;
+      margin: 3rem 0 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .tabs-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .tab-nav {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.2);
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.85rem 1.25rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+    }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: var(--bg-card);
+    }
+    .tab-content {
+      display: none;
+      padding: 1.25rem;
+    }
+    .tab-content.active { display: block; }
+    
+    .code-box {
+      position: relative;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      color: #c9d1d9;
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+    .code-box:last-child { margin-bottom: 0; }
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: #21262d;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.3rem 0.6rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      color: var(--text);
+      border-color: #8b949e;
+      background: #30363d;
+    }
+
+    /* Downloads Table */
+    .downloads-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .downloads-table th, .downloads-table td {
+      padding: 0.85rem 1.25rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .downloads-table th {
+      background: rgba(0,0,0,0.2);
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+    }
+    .downloads-table tr:last-child td { border-bottom: none; }
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #21262d;
+      border: 1px solid var(--border);
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .btn-download:hover {
+      background: #30363d;
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Changelog Section */
+    .changelog-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .changelog-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .changelog-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    .changelog-items {
+      padding-left: 1.25rem;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    .changelog-items li { margin-bottom: 0.4rem; }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">🚀 Unofficial Community Repository</div>
+      <h1>Google Antigravity for Linux</h1>
+      <p class="subtitle">Automated, maintained APT and RPM repositories for Google Antigravity IDE, Hub, and CLI. Native desktop integration with Wayland & URL scheme support.</p>
+    </header>
+
+    <!-- Component Cards -->
+    <div class="grid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Antigravity IDE</div>
+          <span class="version-tag">v{{ meta.ide.version }}</span>
+        </div>
+        <div class="card-desc">VS Code-based IDE with integrated Google agent runtime and terminal detachment.</div>
+        <div class="cmd-preview">$ agy-ide .</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Antigravity 2.0 (Hub)</div>
+          <span class="version-tag">v{{ meta.hub.version }}</span>
+        </div>
+        <div class="card-desc">Autonomous AI agent platform desktop GUI with Google authentication support.</div>
+        <div class="cmd-preview">$ antigravity</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Antigravity CLI</div>
+          <span class="version-tag">v{{ meta.cli.version }}</span>
+        </div>
+        <div class="card-desc">Command-line developer interface with tool calling and pipeline execution.</div>
+        <div class="cmd-preview">$ agy</div>
+      </div>
+    </div>
+
+    <!-- Installation Instructions -->
+    <h2 class="section-title">📦 Repository Setup Guide</h2>
+    <div class="tabs-container">
+      <div class="tab-nav">
+        <button class="tab-btn active" onclick="switchTab(event, 'debian')">Ubuntu / Debian / Mint</button>
+        <button class="tab-btn" onclick="switchTab(event, 'fedora')">Fedora / RHEL / Rocky</button>
+        <button class="tab-btn" onclick="switchTab(event, 'opensuse')">openSUSE</button>
+      </div>
+
+      <!-- Debian Tab -->
+      <div id="debian" class="tab-content active">
+        <p style="margin-bottom:0.75rem; color:var(--text-muted); font-size:0.9rem;">Add the APT repository and install Antigravity:</p>
+        <div class="code-box">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># 1. Add repository source list
+echo "deb [trusted=yes] https://{{ domain }}/debian stable main" | sudo tee /etc/apt/sources.list.d/antigravity.list
+
+# 2. Update and install packages
+sudo apt update
+sudo apt install -y antigravity-ide antigravity antigravity-cli</pre>
+        </div>
+      </div>
+
+      <!-- Fedora Tab -->
+      <div id="fedora" class="tab-content">
+        <p style="margin-bottom:0.75rem; color:var(--text-muted); font-size:0.9rem;">Add the DNF / YUM repository and install Antigravity:</p>
+        <div class="code-box">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># 1. Add repository configuration
+sudo tee /etc/yum.repos.d/antigravity.repo &lt;&lt; 'EOF'
+[antigravity]
+name=Antigravity RPM Repository
+baseurl=https://{{ domain }}/rpm/$basearch/
+enabled=1
+gpgcheck=0
+EOF
+
+# 2. Update and install packages
+sudo dnf install -y antigravity-ide antigravity antigravity-cli</pre>
+        </div>
+      </div>
+
+      <!-- openSUSE Tab -->
+      <div id="opensuse" class="tab-content">
+        <p style="margin-bottom:0.75rem; color:var(--text-muted); font-size:0.9rem;">Add the Zypper repository and install Antigravity:</p>
+        <div class="code-box">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># 1. Add repository
+sudo zypper addrepo --no-gpgcheck https://{{ domain }}/rpm/\$basearch/ antigravity
+
+# 2. Refresh and install
+sudo zypper refresh
+sudo zypper install -y antigravity-ide antigravity antigravity-cli</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direct Downloads -->
+    <h2 class="section-title">📥 Direct Package Downloads</h2>
+    <table class="downloads-table">
+      <thead>
+        <tr>
+          <th>Package</th>
+          <th>Version</th>
+          <th>Architecture</th>
+          <th>Format</th>
+          <th>Download Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pkg in packages %}
+        <tr>
+          <td><strong>{{ pkg.name }}</strong></td>
+          <td><code>{{ pkg.version }}</code></td>
+          <td>{{ pkg.arch }}</td>
+          <td><span style="font-weight:600; text-transform:uppercase;">{{ pkg.format }}</span></td>
+          <td><a href="{{ pkg.url }}" class="btn-download">Download .{{ pkg.format }}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Latest Official Changelogs -->
+    <h2 class="section-title">📋 Latest Official Changelogs</h2>
+    {% if meta.ide.changelog and meta.ide.changelog.get('items') %}
+    <div class="changelog-card">
+      <div class="changelog-header">
+        <span class="version-tag">IDE v{{ meta.ide.version }}</span>
+        <div class="changelog-title">{{ meta.ide.changelog.title }}</div>
+      </div>
+      <ul class="changelog-items">
+        {% for item in meta.ide.changelog['items'][:4] %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if meta.hub.changelog and meta.hub.changelog.get('items') %}
+    <div class="changelog-card">
+      <div class="changelog-header">
+        <span class="version-tag">Hub v{{ meta.hub.version }}</span>
+        <div class="changelog-title">{{ meta.hub.changelog.title }}</div>
+      </div>
+      <ul class="changelog-items">
+        {% for item in meta.hub.changelog['items'][:4] %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if meta.cli.changelog and meta.cli.changelog.get('items') %}
+    <div class="changelog-card">
+      <div class="changelog-header">
+        <span class="version-tag">CLI v{{ meta.cli.version }}</span>
+        <div class="changelog-title">{{ meta.cli.changelog.title }}</div>
+      </div>
+      <ul class="changelog-items">
+        {% for item in meta.cli.changelog['items'][:4] %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <footer>
+      <p>Automated with GitHub Actions • Built from official Google Antigravity Linux tarballs.</p>
+      <p style="margin-top:0.4rem;">
+        <a href="https://github.com/{{ repo_path }}" target="_blank">GitHub Repository</a> • 
+        <a href="https://antigravity.google/download" target="_blank">Official Downloads</a> • 
+        <a href="https://antigravity.google/docs/changelog" target="_blank">Official Changelog</a>
+      </p>
+    </footer>
+  </div>
+
+  <script>
+    function switchTab(evt, tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      evt.currentTarget.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+    function copyCode(btn) {
+      const code = btn.nextElementSibling.innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        const orig = btn.innerText;
+        btn.innerText = 'Copied!';
+        setTimeout(() => btn.innerText = orig, 1500);
+      });
+    }
+  </script>
+</body>
+</html>

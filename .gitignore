@@ -1,0 +1,28 @@
+# Build and Cache artifacts
+cache/
+dist/
+public/
+rpmbuild/
+*.deb
+*.rpm
+*.tar.gz
+*.dmg
+*.exe
+release_notes.md
+check_output.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+venv/
+
+# Metadata cache
+metadata.json
+
+# System
+.DS_Store
+*.swp
+*~

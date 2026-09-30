@@ -1,0 +1,130 @@
+name: Build & Deploy Antigravity Repository
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force rebuild all packages even if version is unchanged'
+        required: false
+        type: boolean
+        default: false
+      component:
+        description: 'Specific component to build'
+        required: false
+        type: choice
+        options:
+          - all
+          - ide
+          - hub
+          - cli
+        default: all
+      arch:
+        description: 'Target architecture'
+        required: false
+        type: choice
+        options:
+          - all
+          - x86_64
+          - aarch64
+        default: all
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install beautifulsoup4 jinja2 requests
+
+      - name: Install System Packaging Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm createrepo-c dpkg-dev gh
+
+      - name: Fetch Latest Metadata & Changelogs
+        id: metadata
+        run: |
+          python3 scripts/fetch_metadata.py --check-new > check_output.txt
+          cat check_output.txt
+          if grep -q "TO_BUILD=" check_output.txt; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine If Build Needed
+        id: condition
+        run: |
+          if [ "${{ github.event.inputs.force }}" = "true" ] || [ "${{ steps.metadata.outputs.has_updates }}" = "true" ] || [ ! -f "versions.json" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Packages (DEB & RPM)
+        if: steps.condition.outputs.should_build == 'true'
+        run: |
+          COMP="${{ github.event.inputs.component || 'all' }}"
+          ARCH="${{ github.event.inputs.arch || 'all' }}"
+          python3 scripts/build_packages.py -c "$COMP" -a "$ARCH"
+
+      - name: Update APT and RPM Repositories
+        if: steps.condition.outputs.should_build == 'true'
+        run: |
+          python3 scripts/update_repo.py
+
+      - name: Generate Web Portal
+        if: steps.condition.outputs.should_build == 'true'
+        run: |
+          python3 scripts/generate_web.py
+
+      - name: Setup GitHub Pages
+        if: steps.condition.outputs.should_build == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages Artifact
+        if: steps.condition.outputs.should_build == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'public'
+
+      - name: Deploy to GitHub Pages
+        if: steps.condition.outputs.should_build == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Create GitHub Release & Commit Version State
+        if: steps.condition.outputs.should_build == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/publish_release.py
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add versions.json
+          git commit -m "chore: update version state [skip ci]" || true
+          git push origin main || true

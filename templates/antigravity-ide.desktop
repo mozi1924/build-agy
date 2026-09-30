@@ -1,0 +1,18 @@
+[Desktop Entry]
+Name=Antigravity IDE
+Comment=Google Antigravity IDE
+GenericName=Text Editor
+Exec=/usr/bin/antigravity-ide %F
+Icon=antigravity-ide
+Type=Application
+Terminal=false
+StartupNotify=true
+StartupWMClass=antigravity-ide
+Categories=Development;IDE;TextEditor;
+MimeType=inode/directory;text/plain;application/x-code-workspace;application/x-antigravity-workspace;
+Actions=new-empty-window;
+
+[Desktop Action new-empty-window]
+Name=New Empty Window
+Exec=/usr/bin/antigravity-ide --new-window %F
+Icon=antigravity-ide
