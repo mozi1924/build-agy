@@ -161,7 +161,6 @@ Release:        1%{{?dist}}
 Summary:        {description}
 License:        Proprietary (Google Terms of Service)
 URL:            https://antigravity.google
-ExclusiveArch:  {rpm_arch}
 {provides_directives}
 
 %description
@@ -199,7 +198,7 @@ fi
 
     RPM_OUT_DIR.mkdir(parents=True, exist_ok=True)
     log(f"Building RPM for {pkg_name} {version} ({rpm_arch})...")
-    run_cmd(f"rpmbuild --define '_topdir {rpmbuild_root}' -bb '{spec_file}'")
+    run_cmd(f"rpmbuild --target '{rpm_arch}' --define '_topdir {rpmbuild_root}' -bb '{spec_file}'")
 
     generated_rpms = list((rpmbuild_root / "RPMS" / rpm_arch).glob("*.rpm"))
     if not generated_rpms:
