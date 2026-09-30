@@ -279,6 +279,10 @@ def build_hub(meta: dict, arch_key: str):
     opt_dest = staging_dir / "opt" / "antigravity"
     opt_dest.mkdir(parents=True, exist_ok=True)
 
+    extracted_root = CACHE_DIR / f"extract_hub_{version}_{arch_key}"
+    shutil.rmtree(extracted_root, ignore_errors=True)
+    extracted_root.mkdir(parents=True, exist_ok=True)
+
     log("Extracting Hub tarball with system tar...")
     run_cmd(f"tar -xzf '{archive_path}' -C '{extracted_root}'")
     top_dirs = [d for d in extracted_root.iterdir() if d.is_dir()]
