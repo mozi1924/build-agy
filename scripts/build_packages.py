@@ -137,7 +137,7 @@ exit 0
     log(f"[✓] Created DEB: {deb_path}")
     return deb_path
 
-def create_rpm_package(pkg_name: str, version: str, rpm_arch: str, staging_dir: Path, description: str, provides: list, changelog_entry: str = None) -> Path:
+def create_rpm_package(pkg_name: str, version: str, rpm_arch: str, staging_dir: Path, description: str, provides: list, changelog_entry: str = None, files_list: list = None) -> Path:
     rpmbuild_root = staging_dir.parent / "rpmbuild"
     shutil.rmtree(rpmbuild_root, ignore_errors=True)
     for sub in ["BUILD", "RPMS", "SOURCES", "SPECS", "SRPMS"]:
@@ -148,6 +148,8 @@ def create_rpm_package(pkg_name: str, version: str, rpm_arch: str, staging_dir: 
     # Format changelog
     if not changelog_entry:
         changelog_entry = "- Update to official release version"
+    
+    files_section = "\n".join(files_list) if files_list else "/*"
     
     spec_content = f"""%global debug_package %{{nil}}
 %global __os_install_post %{{nil}}
@@ -192,7 +194,7 @@ if [ -x /usr/bin/gtk-update-icon-cache ]; then
 fi
 
 %files
-/*
+{files_section}
 
 %changelog
 * Wed Sep 30 2026 Antigravity Maintainers <https://github.com/mozi1924/build-agy> - {version}-1
@@ -256,8 +258,13 @@ def build_cli(meta: dict, arch_key: str):
     changelog_items = meta.get("changelog", {}).get("items", [])
     changelog_str = "\n".join([f"- {item}" for item in changelog_items[:5]]) if changelog_items else "- CLI release update"
 
+    files_list = [
+        "/usr/bin/agy",
+        "/usr/bin/antigravity-cli",
+    ]
+
     create_deb_package("antigravity-cli", version, deb_arch, staging_dir, desc, provides, depends)
-    create_rpm_package("antigravity-cli", version, rpm_arch, staging_dir, desc, provides, changelog_str)
+    create_rpm_package("antigravity-cli", version, rpm_arch, staging_dir, desc, provides, changelog_str, files_list)
     return True
 
 def build_hub(meta: dict, arch_key: str):
@@ -323,8 +330,16 @@ def build_hub(meta: dict, arch_key: str):
     changelog_items = meta.get("changelog", {}).get("items", [])
     changelog_str = "\n".join([f"- {item}" for item in changelog_items[:5]]) if changelog_items else "- Antigravity 2.0 Hub update"
 
+    files_list = [
+        "/opt/antigravity",
+        "/usr/bin/antigravity",
+        "/usr/bin/agy-hub",
+        "/usr/share/applications/antigravity.desktop",
+        "/usr/share/icons/hicolor/512x512/apps/antigravity.png",
+    ]
+
     create_deb_package("antigravity", version, deb_arch, staging_dir, desc, provides, depends, postinst_lines)
-    create_rpm_package("antigravity", version, rpm_arch, staging_dir, desc, provides, changelog_str)
+    create_rpm_package("antigravity", version, rpm_arch, staging_dir, desc, provides, changelog_str, files_list)
     return True
 
 def build_ide(meta: dict, arch_key: str):
@@ -392,8 +407,17 @@ def build_ide(meta: dict, arch_key: str):
     changelog_items = meta.get("changelog", {}).get("items", [])
     changelog_str = "\n".join([f"- {item}" for item in changelog_items[:5]]) if changelog_items else "- Antigravity IDE update"
 
+    files_list_ide = [
+        "/opt/antigravity-ide",
+        "/usr/bin/antigravity-ide",
+        "/usr/bin/agy-ide",
+        "/usr/share/applications/antigravity-ide.desktop",
+        "/usr/share/applications/antigravity-ide-url-handler.desktop",
+        "/usr/share/icons/hicolor/512x512/apps/antigravity-ide.png",
+    ]
+
     create_deb_package("antigravity-ide", version, deb_arch, staging_dir, desc, provides, depends, postinst_lines)
-    create_rpm_package("antigravity-ide", version, rpm_arch, staging_dir, desc, provides, changelog_str)
+    create_rpm_package("antigravity-ide", version, rpm_arch, staging_dir, desc, provides, changelog_str, files_list_ide)
     return True
 
 def main():
