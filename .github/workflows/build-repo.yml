@@ -130,9 +130,12 @@ jobs:
       - name: Aggregate Packages into dist/
         run: |
           mkdir -p dist/deb dist/rpm
-          cp -v artifacts/*.deb dist/deb/ || true
-          cp -v artifacts/*.rpm dist/rpm/ || true
-          ls -la dist/deb dist/rpm
+          find artifacts -name '*.deb' -exec cp -v {} dist/deb/ \;
+          find artifacts -name '*.rpm' -exec cp -v {} dist/rpm/ \;
+          echo "Aggregated DEB packages:"
+          ls -la dist/deb
+          echo "Aggregated RPM packages:"
+          ls -la dist/rpm
 
       - name: Generate APT and RPM Repositories
         run: |
