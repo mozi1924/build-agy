@@ -29,7 +29,7 @@ Since Google Antigravity 2.0, official distribution on Linux was reduced to stan
 
 ```bash
 # 1. Add repository source list
-echo "deb [trusted=yes] https://mozi1924.github.io/build-agy/debian stable main" | sudo tee /etc/apt/sources.list.d/antigravity.list
+echo "deb [trusted=yes] https://github.com/mozi1924/build-agy/releases/latest/download/ ./" | sudo tee /etc/apt/sources.list.d/antigravity.list
 
 # 2. Update package list and install
 sudo apt update

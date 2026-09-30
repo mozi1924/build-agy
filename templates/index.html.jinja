@@ -324,11 +324,11 @@
 
       <!-- Debian Tab -->
       <div id="debian" class="tab-content active">
-        <p style="margin-bottom:0.75rem; color:var(--text-muted); font-size:0.9rem;">Add the APT repository and install Antigravity:</p>
+        <p style="margin-bottom:0.75rem; color:var(--text-muted); font-size:0.9rem;">Add the APT repository (hosted via GitHub Releases CDN) and install Antigravity:</p>
         <div class="code-box">
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
 <pre># 1. Add repository source list
-echo "deb [trusted=yes] https://{{ domain }}/debian stable main" | sudo tee /etc/apt/sources.list.d/antigravity.list
+echo "deb [trusted=yes] https://github.com/{{ repo_path }}/releases/latest/download/ ./" | sudo tee /etc/apt/sources.list.d/antigravity.list
 
 # 2. Update and install packages
 sudo apt update

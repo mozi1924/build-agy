@@ -6,6 +6,11 @@ on:
     - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
+      rebuild_pages_only:
+        description: 'Rebuild and deploy Pages only (do not rebuild packages)'
+        required: false
+        type: boolean
+        default: false
       force:
         description: 'Force rebuild all packages even if version is unchanged'
         required: false
@@ -26,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.condition.outputs.should_build }}
+      rebuild_pages_only: ${{ steps.condition.outputs.rebuild_pages_only }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -39,16 +45,22 @@ jobs:
         id: condition
         run: |
           pip install beautifulsoup4 jinja2 requests
-          python3 scripts/fetch_metadata.py --check-new > check_output.txt
-          cat check_output.txt
-          if [ "${{ github.event.inputs.force }}" = "true" ] || grep -q "TO_BUILD=" check_output.txt || [ ! -f "versions.json" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          else
+          if [ "${{ github.event.inputs.rebuild_pages_only }}" = "true" ]; then
+            echo "rebuild_pages_only=true" >> $GITHUB_OUTPUT
             echo "should_build=false" >> $GITHUB_OUTPUT
+            python3 scripts/fetch_metadata.py || true
+          else
+            echo "rebuild_pages_only=false" >> $GITHUB_OUTPUT
+            python3 scripts/fetch_metadata.py --check-new > check_output.txt
+            cat check_output.txt
+            if [ "${{ github.event.inputs.force }}" = "true" ] || grep -q "TO_BUILD=" check_output.txt || [ ! -f "versions.json" ]; then
+              echo "should_build=true" >> $GITHUB_OUTPUT
+            else
+              echo "should_build=false" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Upload Metadata Artifact
-        if: steps.condition.outputs.should_build == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: metadata
@@ -96,7 +108,8 @@ jobs:
             dist/rpm/*.rpm
 
   deploy-repo:
-    needs: build-packages
+    needs: [check-versions, build-packages]
+    if: always() && (needs.build-packages.result == 'success' || needs.check-versions.outputs.rebuild_pages_only == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -114,20 +127,36 @@ jobs:
         with:
           name: metadata
 
-      - name: Download All Built Package Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: pkg-*
-          path: artifacts
-          merge-multiple: true
-
       - name: Install System Packaging Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y rpm createrepo-c dpkg-dev gh
           pip install beautifulsoup4 jinja2 requests
 
-      - name: Aggregate Packages into dist/
+      - name: Download Existing Release Assets (Pages-only mode)
+        if: needs.check-versions.outputs.rebuild_pages_only == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist/deb dist/rpm
+          echo "Fetching assets from latest GitHub release..."
+          gh release download --pattern "*.deb" --dir dist/deb --clobber
+          gh release download --pattern "*.rpm" --dir dist/rpm --clobber
+          echo "Downloaded DEB assets:"
+          ls -la dist/deb
+          echo "Downloaded RPM assets:"
+          ls -la dist/rpm
+
+      - name: Download & Aggregate Built Packages (Full Build mode)
+        if: needs.check-versions.outputs.rebuild_pages_only != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Aggregate Packages into dist/ (Full Build mode)
+        if: needs.check-versions.outputs.rebuild_pages_only != 'true'
         run: |
           mkdir -p dist/deb dist/rpm
           find artifacts -name '*.deb' -exec cp -v {} dist/deb/ \;
@@ -137,13 +166,47 @@ jobs:
           echo "Aggregated RPM packages:"
           ls -la dist/rpm
 
+      - name: Determine Release Tag
+        id: release_info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ needs.check-versions.outputs.rebuild_pages_only }}" = "true" ]; then
+            TAG=$(gh release list -L 1 --json tagName -q '.[0].tagName')
+          else
+            IDE_VER=$(python3 -c "import json; print(json.load(open('metadata.json'))['ide']['version'])")
+            TAG="v${IDE_VER}-$(date -u +%Y%m%d-%H%M)"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "RELEASE_TAG=${TAG}" >> $GITHUB_ENV
+          echo "Using release tag: ${TAG}"
+
       - name: Generate APT and RPM Repositories
         run: |
-          python3 scripts/update_repo.py
+          python3 scripts/update_repo.py --tag "${{ steps.release_info.outputs.tag }}"
+
+      - name: Create GitHub Release & Upload Assets (Full Build mode)
+        if: needs.check-versions.outputs.rebuild_pages_only != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/publish_release.py --tag "${{ steps.release_info.outputs.tag }}"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add versions.json
+          git commit -m "chore: update version state [skip ci]" || true
+          git push origin main || true
+
+      - name: Update APT Flat Indices on Release (Pages-only mode)
+        if: needs.check-versions.outputs.rebuild_pages_only == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/publish_release.py --upload-indices-only --tag "${{ steps.release_info.outputs.tag }}"
 
       - name: Generate Web Portal
         run: |
-          python3 scripts/generate_web.py
+          python3 scripts/generate_web.py --tag "${{ steps.release_info.outputs.tag }}"
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
@@ -156,14 +219,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
-      - name: Create GitHub Release & Commit Version State
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 scripts/publish_release.py
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add versions.json
-          git commit -m "chore: update version state [skip ci]" || true
-          git push origin main || true

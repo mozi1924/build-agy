@@ -2,17 +2,20 @@
 """
 Antigravity Repository Generator
 Generates:
-1. APT repository (Debian/Ubuntu) in public/debian/
-2. RPM repository (Fedora/RHEL/CentOS/openSUSE) in public/rpm/
+1. APT Flat repository (Debian/Ubuntu) in dist/deb/ for publishing to GitHub Release
+2. RPM repository (Fedora/RHEL/CentOS/openSUSE) in public/rpm/ using location-prefix
+   pointing to GitHub Releases (zero RPM files stored on GitHub Pages)
 """
 
+import argparse
 import gzip
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
-import tarfile
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +24,7 @@ DIST_DIR = BASE_DIR / "dist"
 PUBLIC_DIR = BASE_DIR / "public"
 DEBIAN_DIR = PUBLIC_DIR / "debian"
 RPM_DIR = PUBLIC_DIR / "rpm"
+METADATA_FILE = BASE_DIR / "metadata.json"
 
 def log(msg: str):
     print(f"[update_repo] {msg}")
@@ -31,6 +35,39 @@ def calc_hash(path: Path, algo: str) -> str:
         while chunk := f.read(65536):
             h.update(chunk)
     return h.hexdigest()
+
+def get_repo_info():
+    default_user = "mozi1924"
+    default_repo = "build-agy"
+    try:
+        res = subprocess.run("git remote get-url origin", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if res.returncode == 0:
+            url = res.stdout.strip()
+            m = re.search(r"github\.com[:/]([^/]+)/([^/\.]+)", url)
+            if m:
+                return m.group(1), m.group(2)
+    except Exception:
+        pass
+    return default_user, default_repo
+
+def get_release_tag(explicit_tag: str = None) -> str:
+    if explicit_tag:
+        return explicit_tag
+    if "RELEASE_TAG" in os.environ and os.environ["RELEASE_TAG"]:
+        return os.environ["RELEASE_TAG"]
+    try:
+        res = subprocess.run("gh release list -L 1 --json tagName -q '.[0].tagName'", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    if METADATA_FILE.exists():
+        import json
+        with open(METADATA_FILE, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+            ide_ver = meta.get("ide", {}).get("version", "latest")
+            return f"v{ide_ver}"
+    return "latest"
 
 def extract_deb_control(deb_path: Path) -> dict:
     """Extracts control fields from a .deb archive."""
@@ -52,99 +89,89 @@ def extract_deb_control(deb_path: Path) -> dict:
         elif line.startswith("  ") and current_key:
             fields[current_key] += "\n" + line
 
-    fields["Filename"] = f"pool/main/{deb_path.name}"
+    # In flat repo, Filename is relative to flat repo root (the release asset filename)
+    fields["Filename"] = deb_path.name
     fields["Size"] = str(deb_path.stat().st_size)
     fields["MD5sum"] = calc_hash(deb_path, "md5")
     fields["SHA1"] = calc_hash(deb_path, "sha1")
     fields["SHA256"] = calc_hash(deb_path, "sha256")
     return fields
 
-def generate_apt_repo():
-    log("=== Generating APT Repository ===")
-    pool_dir = DEBIAN_DIR / "pool" / "main"
-    pool_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy deb files to pool/main
-    deb_files = list((DIST_DIR / "deb").glob("*.deb"))
+def generate_apt_flat_repo():
+    log("=== Generating APT Flat Repository for Releases ===")
+    deb_dir = DIST_DIR / "deb"
+    deb_files = sorted(list(deb_dir.glob("*.deb")))
     if not deb_files:
         log("[-] No .deb files found in dist/deb/")
         return
 
+    package_entries = []
+    architectures = set()
+
     for deb in deb_files:
-        dest = pool_dir / deb.name
-        shutil.copy2(deb, dest)
+        ctrl = extract_deb_control(deb)
+        architectures.add(ctrl.get("Architecture", "all"))
+        entry_lines = []
+        for k in ["Package", "Version", "Architecture", "Maintainer", "Installed-Size", "Depends", "Provides", "Replaces", "Section", "Priority", "Filename", "Size", "SHA256", "SHA1", "MD5sum", "Description"]:
+            if k in ctrl:
+                entry_lines.append(f"{k}: {ctrl[k]}")
+        package_entries.append("\n".join(entry_lines))
 
-    dists_dir = DEBIAN_DIR / "dists" / "stable"
-    architectures = ["amd64", "arm64"]
-
-    release_file_entries = {}
-
-    for arch in architectures:
-        bin_dir = dists_dir / "main" / f"binary-{arch}"
-        bin_dir.mkdir(parents=True, exist_ok=True)
-
-        packages_file = bin_dir / "Packages"
-        packages_gz_file = bin_dir / "Packages.gz"
-
-        matching_debs = [p for p in pool_dir.glob("*.deb") if f"_{arch}.deb" in p.name or "_all.deb" in p.name]
-        package_entries = []
-
-        for deb in matching_debs:
-            ctrl = extract_deb_control(deb)
-            entry_lines = []
-            for k in ["Package", "Version", "Architecture", "Maintainer", "Installed-Size", "Depends", "Provides", "Replaces", "Section", "Priority", "Filename", "Size", "SHA256", "SHA1", "MD5sum", "Description"]:
-                if k in ctrl:
-                    entry_lines.append(f"{k}: {ctrl[k]}")
-            package_entries.append("\n".join(entry_lines))
-
-        packages_content = "\n\n".join(package_entries) + ("\n" if package_entries else "")
-        packages_file.write_text(packages_content, encoding="utf-8")
-
-        # Compress to Packages.gz
-        with open(packages_file, "rb") as f_in, gzip.open(packages_gz_file, "wb", compresslevel=9) as f_out:
-            shutil.copyfileobj(f_in, f_out)
-
-        for p_file in [packages_file, packages_gz_file]:
-            rel_path = f"main/binary-{arch}/{p_file.name}"
-            release_file_entries[rel_path] = {
-                "size": p_file.stat().st_size,
-                "md5": calc_hash(p_file, "md5"),
-                "sha1": calc_hash(p_file, "sha1"),
-                "sha256": calc_hash(p_file, "sha256"),
-            }
+    packages_content = "\n\n".join(package_entries) + ("\n" if package_entries else "")
+    
+    packages_file = deb_dir / "Packages"
+    packages_gz_file = deb_dir / "Packages.gz"
+    
+    packages_file.write_text(packages_content, encoding="utf-8")
+    with open(packages_file, "rb") as f_in, gzip.open(packages_gz_file, "wb", compresslevel=9) as f_out:
+        shutil.copyfileobj(f_in, f_out)
 
     # Generate Release file
     date_str = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S UTC")
+    arch_str = " ".join(sorted(architectures)) if architectures else "amd64 arm64"
     release_lines = [
         "Origin: Antigravity Community",
         "Label: Antigravity",
         "Suite: stable",
         "Codename: stable",
         f"Date: {date_str}",
-        f"Architectures: {' '.join(architectures)}",
-        "Components: main",
-        "Description: Google Antigravity (CLI, Hub, IDE) Community Repository for Linux",
+        f"Architectures: {arch_str}",
+        "Description: Google Antigravity (CLI, Hub, IDE) Community Flat Repository for Linux",
         "MD5Sum:",
     ]
-    for rel_path, info in release_file_entries.items():
-        release_lines.append(f" {info['md5']} {info['size']:>8} {rel_path}")
-
+    
+    release_files = {
+        "Packages": packages_file,
+        "Packages.gz": packages_gz_file,
+    }
+    
+    for name, p_file in release_files.items():
+        release_lines.append(f" {calc_hash(p_file, 'md5')} {p_file.stat().st_size:>8} {name}")
     release_lines.append("SHA1:")
-    for rel_path, info in release_file_entries.items():
-        release_lines.append(f" {info['sha1']} {info['size']:>8} {rel_path}")
-
+    for name, p_file in release_files.items():
+        release_lines.append(f" {calc_hash(p_file, 'sha1')} {p_file.stat().st_size:>8} {name}")
     release_lines.append("SHA256:")
-    for rel_path, info in release_file_entries.items():
-        release_lines.append(f" {info['sha256']} {info['size']:>8} {rel_path}")
+    for name, p_file in release_files.items():
+        release_lines.append(f" {calc_hash(p_file, 'sha256')} {p_file.stat().st_size:>8} {name}")
 
-    release_file = dists_dir / "Release"
+    release_file = deb_dir / "Release"
     release_file.write_text("\n".join(release_lines) + "\n", encoding="utf-8")
-    log(f"[✓] Created APT Release file: {release_file}")
+    log(f"[✓] Created APT Flat indices in dist/deb/: Packages, Packages.gz, Release")
 
-def generate_rpm_repo():
+    # Clean any legacy public/debian folder so Pages has 0 deb files
+    if DEBIAN_DIR.exists():
+        log(f"Cleaning legacy {DEBIAN_DIR} to save GitHub Pages storage and bandwidth...")
+        shutil.rmtree(DEBIAN_DIR, ignore_errors=True)
+
+def generate_rpm_repo(release_tag: str):
     log("=== Generating RPM Repository ===")
+    user, repo = get_repo_info()
+    prefix = f"https://github.com/{user}/{repo}/releases/download/{release_tag}/"
+    log(f"Using location-prefix: {prefix}")
+    
     arches = ["x86_64", "aarch64"]
-    rpm_files = list((DIST_DIR / "rpm").glob("*.rpm"))
+    rpm_dir = DIST_DIR / "rpm"
+    rpm_files = list(rpm_dir.glob("*.rpm"))
     if not rpm_files:
         log("[-] No .rpm files found in dist/rpm/")
         return
@@ -154,21 +181,41 @@ def generate_rpm_repo():
         arch_dir.mkdir(parents=True, exist_ok=True)
 
         matching = [r for r in rpm_files if f".{arch}.rpm" in r.name or ".noarch.rpm" in r.name]
-        for rpm in matching:
-            shutil.copy2(rpm, arch_dir / rpm.name)
+        if not matching:
+            log(f"[-] No matching RPM packages for {arch}")
+            continue
 
-        if matching:
+        with tempfile.TemporaryDirectory() as td:
+            staging_dir = Path(td) / arch
+            staging_dir.mkdir()
+            for r in matching:
+                dest = staging_dir / r.name
+                os.symlink(r.resolve(), dest)
+
             log(f"Running createrepo_c for {arch} ({len(matching)} packages)...")
-            res = subprocess.run(f"createrepo_c --update '{arch_dir}'", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cmd = f"createrepo_c --general-compress-type=gz --location-prefix '{prefix}' --outputdir '{arch_dir}' '{staging_dir}'"
+            res = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if res.returncode != 0:
                 log(f"createrepo_c failed: {res.stderr}")
                 raise RuntimeError("createrepo_c failed")
-            log(f"[✓] Created RPM repodata for {arch}")
+
+        # Ensure no .rpm files exist in arch_dir
+        for orphan_rpm in arch_dir.glob("*.rpm"):
+            orphan_rpm.unlink()
+
+        log(f"[✓] Created RPM repodata for {arch} (0 RPM files stored in public/rpm/{arch})")
 
 def main():
-    generate_apt_repo()
-    generate_rpm_repo()
-    log("[✓] All repository indices successfully updated in public/")
+    parser = argparse.ArgumentParser(description="Generate APT flat repo indices and RPM repo with release redirects.")
+    parser.add_argument("--tag", dest="tag", help="Explicit GitHub Release tag to point packages to")
+    args = parser.parse_args()
+
+    tag = get_release_tag(args.tag)
+    log(f"Active release tag: {tag}")
+
+    generate_apt_flat_repo()
+    generate_rpm_repo(tag)
+    log("[✓] All repository indices successfully updated (zero heavy packages in public/)")
 
 if __name__ == "__main__":
     main()
