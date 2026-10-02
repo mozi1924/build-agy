@@ -61,13 +61,7 @@ def get_release_tag(explicit_tag: str = None) -> str:
             return res.stdout.strip()
     except Exception:
         pass
-    if METADATA_FILE.exists():
-        import json
-        with open(METADATA_FILE, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-            ide_ver = meta.get("ide", {}).get("version", "latest")
-            return f"v{ide_ver}"
-    return "latest"
+    return "v" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 def extract_deb_control(deb_path: Path) -> dict:
     """Extracts control fields from a .deb archive."""

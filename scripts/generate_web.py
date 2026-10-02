@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from jinja2 import Template
 
@@ -44,12 +45,7 @@ def get_release_tag(explicit_tag: str = None) -> str:
             return res.stdout.strip()
     except Exception:
         pass
-    if METADATA_FILE.exists():
-        with open(METADATA_FILE, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-            ide_ver = meta.get("ide", {}).get("version", "latest")
-            return f"v{ide_ver}"
-    return "latest"
+    return "v" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 def scan_available_packages(user: str, repo: str, release_tag: str):
     packages = []

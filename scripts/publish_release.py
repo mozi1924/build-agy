@@ -61,13 +61,9 @@ def main():
         if res.returncode == 0 and res.stdout.strip():
             tag_name = res.stdout.strip()
         else:
-            ide_ver = meta.get("ide", {}).get("version", "latest")
-            date_tag = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-            tag_name = f"v{ide_ver}-{date_tag}"
+            tag_name = f"v{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     else:
-        ide_ver = meta.get("ide", {}).get("version", "latest")
-        date_tag = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-        tag_name = f"v{ide_ver}-{date_tag}"
+        tag_name = f"v{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
 
     file_args = " ".join([f"'{f}'" for f in all_assets])
 
@@ -120,9 +116,17 @@ def main():
 
     # Update versions.json
     new_versions = {
-        "cli": {"version": meta["cli"]["version"]},
-        "hub": {"version": meta["hub"]["version"]},
-        "ide": {"version": meta["ide"]["version"]},
+        "cli": {
+            "version": meta["cli"]["version"]
+        },
+        "hub": {
+            "version": meta["hub"]["version"],
+            "build": meta["hub"].get("build")
+        },
+        "ide": {
+            "version": meta["ide"]["version"],
+            "build": meta["ide"].get("build")
+        },
         "last_updated": datetime.now(timezone.utc).isoformat()
     }
     VERSIONS_FILE.write_text(json.dumps(new_versions, indent=2), encoding="utf-8")

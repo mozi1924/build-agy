@@ -197,7 +197,12 @@ def main():
     # Check differences against versions.json if it exists
     versions_file = "versions.json"
     to_build = []
-    if os.path.exists(versions_file):
+    force_build = "--force" in sys.argv
+
+    if force_build:
+        to_build = ["cli", "hub", "ide"]
+        print("  -> Force build enabled (--force). All components scheduled for build.")
+    elif os.path.exists(versions_file):
         with open(versions_file, "r", encoding="utf-8") as f:
             old_versions = json.load(f)
         for comp in ["cli", "hub", "ide"]:
@@ -212,8 +217,26 @@ def main():
         to_build = ["cli", "hub", "ide"]
         print("  -> No existing versions.json found. All components scheduled for build.")
 
+    # Export variables if running in GitHub Actions CI
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        should_build_str = "true" if to_build else "false"
+        components_json_str = json.dumps(to_build if to_build else ["none"])
+        to_build_str = ",".join(to_build)
+        with open(github_output, "a", encoding="utf-8") as f:
+            f.write(f"should_build={should_build_str}\n")
+            f.write(f"components_json={components_json_str}\n")
+            f.write(f"to_build={to_build_str}\n")
+        print("\n[CI Output Exported]")
+        print(f"  should_build={should_build_str}")
+        print(f"  components_json={components_json_str}")
+        print(f"  to_build={to_build_str}")
+
     if "--check-new" in sys.argv:
-        print("TO_BUILD=" + ",".join(to_build))
+        if to_build:
+            print("TO_BUILD=" + ",".join(to_build))
+        else:
+            print("NO_UPDATES")
 
 if __name__ == "__main__":
     main()

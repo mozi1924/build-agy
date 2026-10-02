@@ -348,6 +348,9 @@ name=Antigravity RPM Repository
 baseurl=https://{{ domain }}/rpm/$basearch/
 enabled=1
 gpgcheck=0
+type=rpm-md
+metadata_expire=1h
+skip_if_unavailable=True
 EOF
 
 # 2. Update and install packages
@@ -360,8 +363,8 @@ sudo dnf install -y antigravity-ide antigravity antigravity-cli</pre>
         <p style="margin-bottom:0.75rem; color:var(--text-muted); font-size:0.9rem;">Add the Zypper repository and install Antigravity:</p>
         <div class="code-box">
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-<pre># 1. Add repository
-sudo zypper addrepo --no-gpgcheck https://{{ domain }}/rpm/\$basearch/ antigravity
+<pre># 1. Add repository (with auto-refresh)
+sudo zypper addrepo -f --no-gpgcheck https://{{ domain }}/rpm/\$basearch/ antigravity
 
 # 2. Refresh and install
 sudo zypper refresh

@@ -31,6 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.condition.outputs.should_build }}
+      components_json: ${{ steps.condition.outputs.components_json }}
+      to_build: ${{ steps.condition.outputs.to_build }}
       rebuild_pages_only: ${{ steps.condition.outputs.rebuild_pages_only }}
     steps:
       - name: Checkout Repository
@@ -48,16 +50,16 @@ jobs:
           if [ "${{ github.event.inputs.rebuild_pages_only }}" = "true" ]; then
             echo "rebuild_pages_only=true" >> $GITHUB_OUTPUT
             echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "components_json=[\"none\"]" >> $GITHUB_OUTPUT
+            echo "to_build=" >> $GITHUB_OUTPUT
             python3 scripts/fetch_metadata.py || true
           else
             echo "rebuild_pages_only=false" >> $GITHUB_OUTPUT
-            python3 scripts/fetch_metadata.py --check-new > check_output.txt
-            cat check_output.txt
-            if [ "${{ github.event.inputs.force }}" = "true" ] || grep -q "TO_BUILD=" check_output.txt || [ ! -f "versions.json" ]; then
-              echo "should_build=true" >> $GITHUB_OUTPUT
-            else
-              echo "should_build=false" >> $GITHUB_OUTPUT
+            EXTRA_ARGS=""
+            if [ "${{ github.event.inputs.force }}" = "true" ]; then
+              EXTRA_ARGS="--force"
             fi
+            python3 scripts/fetch_metadata.py ${EXTRA_ARGS}
           fi
 
       - name: Upload Metadata Artifact
@@ -73,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        component: [cli, hub, ide]
+        component: ${{ fromJson(needs.check-versions.outputs.components_json) }}
         arch: [x86_64, aarch64]
     steps:
       - name: Checkout Repository
@@ -133,21 +135,21 @@ jobs:
           sudo apt-get install -y rpm createrepo-c dpkg-dev gh
           pip install beautifulsoup4 jinja2 requests
 
-      - name: Download Existing Release Assets (Pages-only mode)
-        if: needs.check-versions.outputs.rebuild_pages_only == 'true'
+      - name: Download Existing Release Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p dist/deb dist/rpm
-          echo "Fetching assets from latest GitHub release..."
-          gh release download --pattern "*.deb" --dir dist/deb --clobber
-          gh release download --pattern "*.rpm" --dir dist/rpm --clobber
-          echo "Downloaded DEB assets:"
-          ls -la dist/deb
-          echo "Downloaded RPM assets:"
-          ls -la dist/rpm
+          echo "Attempting to fetch assets from previous GitHub release..."
+          gh release download --pattern "*.deb" --dir dist/deb --clobber || true
+          gh release download --pattern "*.rpm" --dir dist/rpm --clobber || true
+          rm -f dist/deb/Packages* dist/deb/Release
+          echo "Current DEB assets:"
+          ls -la dist/deb || true
+          echo "Current RPM assets:"
+          ls -la dist/rpm || true
 
-      - name: Download & Aggregate Built Packages (Full Build mode)
+      - name: Download Built Packages (Build mode)
         if: needs.check-versions.outputs.rebuild_pages_only != 'true'
         uses: actions/download-artifact@v4
         with:
@@ -155,15 +157,13 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Aggregate Packages into dist/ (Full Build mode)
+      - name: Aggregate & Replace Packages into dist/ (Build mode)
         if: needs.check-versions.outputs.rebuild_pages_only != 'true'
         run: |
-          mkdir -p dist/deb dist/rpm
-          find artifacts -name '*.deb' -exec cp -v {} dist/deb/ \;
-          find artifacts -name '*.rpm' -exec cp -v {} dist/rpm/ \;
-          echo "Aggregated DEB packages:"
+          python3 scripts/aggregate_packages.py --artifacts-dir artifacts --dist-dir dist
+          echo "Final aggregated DEB packages:"
           ls -la dist/deb
-          echo "Aggregated RPM packages:"
+          echo "Final aggregated RPM packages:"
           ls -la dist/rpm
 
       - name: Determine Release Tag
@@ -174,8 +174,7 @@ jobs:
           if [ "${{ needs.check-versions.outputs.rebuild_pages_only }}" = "true" ]; then
             TAG=$(gh release list -L 1 --json tagName -q '.[0].tagName')
           else
-            IDE_VER=$(python3 -c "import json; print(json.load(open('metadata.json'))['ide']['version'])")
-            TAG="v${IDE_VER}-$(date -u +%Y%m%d-%H%M)"
+            TAG="v$(date -u +%Y%m%d-%H%M%S)"
           fi
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "RELEASE_TAG=${TAG}" >> $GITHUB_ENV
