@@ -55,7 +55,10 @@ sudo dnf install -y antigravity-ide antigravity antigravity-cli
 ### openSUSE (Zypper)
 
 ```bash
-sudo zypper addrepo --no-gpgcheck https://mozi1924.github.io/build-agy/rpm/\$basearch/ antigravity
+# 1. Add repository with auto-refresh
+sudo zypper addrepo -f --no-gpgcheck https://mozi1924.github.io/build-agy/rpm/\$basearch/ antigravity
+
+# 2. Refresh and install
 sudo zypper refresh
 sudo zypper install -y antigravity-ide antigravity antigravity-cli
 ```

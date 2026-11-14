@@ -199,9 +199,21 @@ def main():
     to_build = []
     force_build = "--force" in sys.argv
 
-    if force_build:
+    # Check if repository currently has any releases
+    has_releases = True
+    try:
+        chk = subprocess.run("gh release list -L 1 --json tagName -q '.[0].tagName'", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if chk.returncode == 0 and not chk.stdout.strip():
+            has_releases = False
+    except Exception:
+        pass
+
+    if force_build or not has_releases:
         to_build = ["cli", "hub", "ide"]
-        print("  -> Force build enabled (--force). All components scheduled for build.")
+        if not has_releases:
+            print("  -> No existing releases found in this repository. Scheduling initial build for all components.")
+        else:
+            print("  -> Force build enabled (--force). All components scheduled for build.")
     elif os.path.exists(versions_file):
         with open(versions_file, "r", encoding="utf-8") as f:
             old_versions = json.load(f)

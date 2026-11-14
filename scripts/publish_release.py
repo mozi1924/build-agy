@@ -7,6 +7,7 @@ and APT flat repository index files (Packages, Packages.gz, Release).
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -16,6 +17,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DIST_DIR = BASE_DIR / "dist"
 METADATA_FILE = BASE_DIR / "metadata.json"
 VERSIONS_FILE = BASE_DIR / "versions.json"
+
+def get_repo_info():
+    if os.environ.get("GITHUB_REPOSITORY"):
+        parts = os.environ["GITHUB_REPOSITORY"].split("/", 1)
+        if len(parts) == 2:
+            return parts[0], parts[1]
+
+    default_user = "mozi1924"
+    default_repo = "build-agy"
+    try:
+        res = subprocess.run("git remote get-url origin", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if res.returncode == 0:
+            url = res.stdout.strip()
+            m = re.search(r"github\.com[:/]([^/]+)/([^/\.]+)", url)
+            if m:
+                return m.group(1), m.group(2)
+    except Exception:
+        pass
+    return default_user, default_repo
 
 def main():
     parser = argparse.ArgumentParser(description="Publish or update GitHub release with packages and indices.")
@@ -98,8 +118,9 @@ def main():
                     notes_lines.append(f"- {item}")
                 notes_lines.append("")
 
+        user, repo = get_repo_info()
         notes_lines.append("### 📦 Repository Usage")
-        notes_lines.append("Visit the [Repository Portal](https://mozi1924.github.io/build-agy) for one-click setup on Debian, Ubuntu, Fedora, RHEL, and openSUSE.")
+        notes_lines.append(f"Visit the [Repository Portal](https://{user}.github.io/{repo}) for one-click setup on Debian, Ubuntu, Fedora, RHEL, and openSUSE.")
         
         notes_body = "\n".join(notes_lines)
 
