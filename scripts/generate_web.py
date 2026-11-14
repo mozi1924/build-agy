@@ -20,6 +20,11 @@ PUBLIC_DIR = BASE_DIR / "public"
 METADATA_FILE = BASE_DIR / "metadata.json"
 
 def get_repo_info():
+    if os.environ.get("GITHUB_REPOSITORY"):
+        parts = os.environ["GITHUB_REPOSITORY"].split("/", 1)
+        if len(parts) == 2:
+            return parts[0], parts[1]
+
     default_user = "mozi1924"
     default_repo = "build-agy"
     try:
