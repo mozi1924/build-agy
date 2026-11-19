@@ -37,6 +37,11 @@ def calc_hash(path: Path, algo: str) -> str:
     return h.hexdigest()
 
 def get_repo_info():
+    if os.environ.get("GITHUB_REPOSITORY"):
+        parts = os.environ["GITHUB_REPOSITORY"].split("/", 1)
+        if len(parts) == 2:
+            return parts[0], parts[1]
+
     default_user = "mozi1924"
     default_repo = "build-agy"
     try:
@@ -160,8 +165,6 @@ def generate_apt_flat_repo():
 def generate_rpm_repo(release_tag: str):
     log("=== Generating RPM Repository ===")
     user, repo = get_repo_info()
-    prefix = f"https://github.com/{user}/{repo}/releases/download/{release_tag}/"
-    log(f"Using location-prefix: {prefix}")
     
     arches = ["x86_64", "aarch64"]
     rpm_dir = DIST_DIR / "rpm"
@@ -179,25 +182,28 @@ def generate_rpm_repo(release_tag: str):
             log(f"[-] No matching RPM packages for {arch}")
             continue
 
-        with tempfile.TemporaryDirectory() as td:
-            staging_dir = Path(td) / arch
-            staging_dir.mkdir()
-            for r in matching:
-                dest = staging_dir / r.name
-                os.symlink(r.resolve(), dest)
+        # Clean existing rpms in arch_dir to avoid duplicates
+        for old_rpm in arch_dir.glob("*.rpm"):
+            old_rpm.unlink()
 
-            log(f"Running createrepo_c for {arch} ({len(matching)} packages)...")
-            cmd = f"createrepo_c --general-compress-type=gz --location-prefix '{prefix}' --outputdir '{arch_dir}' '{staging_dir}'"
-            res = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if res.returncode != 0:
-                log(f"createrepo_c failed: {res.stderr}")
-                raise RuntimeError("createrepo_c failed")
+        # Copy matching RPM packages into arch_dir so they are served directly by GitHub Pages
+        for r in matching:
+            dest = arch_dir / r.name
+            shutil.copy2(r, dest)
+            log(f"Copied {r.name} to {arch_dir}")
 
-        # Ensure no .rpm files exist in arch_dir
-        for orphan_rpm in arch_dir.glob("*.rpm"):
-            orphan_rpm.unlink()
+        log(f"Running createrepo_c for {arch} ({len(matching)} packages)...")
+        # Run createrepo_c directly on arch_dir with standard relative URIs (no --location-prefix).
+        # openSUSE (Zypper/libzypp) strictly concatenates baseurl with location href;
+        # using standard relative URIs fixes the 404 URL concatenation error on openSUSE
+        # while remaining 100% compatible with DNF (Fedora/RHEL).
+        cmd = f"createrepo_c --general-compress-type=gz --outputdir '{arch_dir}' '{arch_dir}'"
+        res = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if res.returncode != 0:
+            log(f"createrepo_c failed: {res.stderr}")
+            raise RuntimeError("createrepo_c failed")
 
-        log(f"[✓] Created RPM repodata for {arch} (0 RPM files stored in public/rpm/{arch})")
+        log(f"[✓] Created RPM repodata for {arch} ({len(matching)} RPM files stored in public/rpm/{arch})")
 
 def main():
     parser = argparse.ArgumentParser(description="Generate APT flat repo indices and RPM repo with release redirects.")
